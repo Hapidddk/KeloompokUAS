@@ -2,29 +2,25 @@
 
 namespace App\Controllers;
 
-use App\Controllers\BaseController;
-use Codeigniter\HTTP\ResponseInterface;
-use GuzzleHttp\Client;
-use App\models\TransactionModel;
-use App\models\TransactionDetailModel;
+use App\Models\TransactionModel;
+use App\Models\TransactionDetailModel;
+
 
 class TransaksiController extends BaseController
 {
     protected $cart;
     protected $client;
-    protected $apikey;
+    protected $apiKey;
     protected $transaction;
     protected $transaction_detail;
-    
 
     function __construct()
     {
         helper('number');
-        helper(filenames: 'form');
+        helper('form');
         $this->cart = \Config\Services::cart();
         $this->client = new \GuzzleHttp\Client();
         $this->apiKey = env('COST_KEY');
-        $this->apiKeyx = "fff";
         $this->transaction = new TransactionModel();
         $this->transaction_detail = new TransactionDetailModel();
     }
@@ -82,104 +78,195 @@ class TransaksiController extends BaseController
         $data['items'] = $this->cart->contents();
         $data['total'] = $this->cart->total();
 
+        // Calculate total weight: 1000 gram per item * total quantity
+        $total_weight = 0;
+        foreach ($this->cart->contents() as $item) {
+            $total_weight += $item['qty'] * 1000; // 1000 gram per item
+        }
+        $data['total_weight'] = $total_weight;
+
         return view('v_checkout', $data);
     }
 
     public function getLocation()
-{
-		//keyword pencarian yang dikirimkan dari halaman checkout
-    $search = $this->request->getGet('search');
+    {
+        //keyword pencarian yang dikirimkan dari halaman checkout
+        $search = $this->request->getGet('search');
 
-    $response = $this->client->request(
-        'GET', 
-        'https://rajaongkir.komerce.id/api/v1/destination/domestic-destination?search='.$search.'&limit=50', [
-            'headers' => [
-                'accept' => 'application/json',
-                'key' => $this->apiKey,
-            ],
-        ]
-    );
+        $response = $this->client->request(
+            'GET',
+            'https://rajaongkir.komerce.id/api/v1/destination/domestic-destination?search=' . $search . '&limit=50',
+            [
+                'headers' => [
+                    'accept' => 'application/json',
+                    'key' => $this->apiKey,
+                ],
+            ]
+        );
 
-    $body = json_decode($response->getBody(), true); 
-   
-    
-    return $this->response->setJSON($body['data']);
-}
+        $body = json_decode($response->getBody(), true);
+        return $this->response->setJSON($body['data']);
+    }
 
-public function buy()
-{
-    if ($this->request->getPost()) { 
-        $dataForm = [
-            'username' => $this->request->getPost('username'),
-            'total_harga' => $this->request->getPost('total_harga'),
-            'alamat' => $this->request->getPost('alamat'),
-            'ongkir' => $this->request->getPost('ongkir'),
-            'status' => 0,
-            'created_at' => date("Y-m-d H:i:s"),
-            'updated_at' => date("Y-m-d H:i:s")
-        ];
+    public function getCost()
+    {
+        //ID lokasi yang dikirimkan dari halaman checkout
+        $destination = $this->request->getGet('destination');
 
-        $this->transaction->insert($dataForm);
+        // Get dynamic weight from request, fallback to 1000 if not provided
+        $weight = $this->request->getGet('weight') ? $this->request->getGet('weight') : 1000;
 
-        $last_insert_id = $this->transaction->getInsertID();
+        // Get dynamic courier from request, fallback to 'jne' if not provided
+        $courier = $this->request->getGet('courier') ? $this->request->getGet('courier') : 'jne';
 
-        foreach ($this->cart->contents() as $value) {
-            $dataFormDetail = [
-                'transaction_id' => $last_insert_id,
-                'product_id' => $value['id'],
-                'jumlah' => $value['qty'],
-                'diskon' => 0,
-                'subtotal_harga' => $value['qty'] * $value['price'],
+        //parameter daerah asal pengiriman, berat produk, dan kurir 
+        //valuenya => 64999 : PEDURUNGAN TENGAH , dynamic weight, dan JNE
+        $response = $this->client->request(
+            'POST',
+            'https://rajaongkir.komerce.id/api/v1/calculate/domestic-cost',
+            [
+                'multipart' => [
+                    [
+                        'name' => 'origin',
+                        'contents' => '64999'
+                    ],
+                    [
+                        'name' => 'destination',
+                        'contents' => $destination
+                    ],
+                    [
+                        'name' => 'weight',
+                        'contents' => $weight
+                    ],
+                    [
+                        'name' => 'courier',
+                        'contents' => $courier
+                    ]
+                ],
+                'headers' => [
+                    'accept' => 'application/json',
+                    'key' => $this->apiKey,
+                ],
+            ]
+        );
+
+        $body = json_decode($response->getBody(), true);
+        return $this->response->setJSON($body['data']);
+    }
+
+    public function buy()
+    {
+        if ($this->request->getPost()) {
+            $dataForm = [
+                'username' => $this->request->getPost('username'),
+                'total_harga' => $this->request->getPost('total_harga'),
+                'alamat' => $this->request->getPost('alamat'),
+                'ongkir' => $this->request->getPost('ongkir'),
+                'no_whatsapp' => $this->request->getPost('no_whatsapp'),
+                'status' => 0,
                 'created_at' => date("Y-m-d H:i:s"),
                 'updated_at' => date("Y-m-d H:i:s")
             ];
 
-            $this->transaction_detail->insert($dataFormDetail);
+            $this->transaction->insert($dataForm);
+
+            $last_insert_id = $this->transaction->getInsertID();
+
+            foreach ($this->cart->contents() as $value) {
+                $dataFormDetail = [
+                    'transaction_id' => $last_insert_id,
+                    'product_id' => $value['id'],
+                    'jumlah' => $value['qty'],
+                    'diskon' => 0,
+                    'subtotal_harga' => $value['qty'] * $value['price'],
+                    'created_at' => date("Y-m-d H:i:s"),
+                    'updated_at' => date("Y-m-d H:i:s")
+                ];
+
+                $this->transaction_detail->insert($dataFormDetail);
+            }
+
+            // Send WhatsApp notification
+            $this->sendWhatsAppNotification($dataForm, $last_insert_id);
+
+            $this->cart->destroy();
+
+            session()->setFlashdata('success', 'Pesanan berhasil dibuat dan notifikasi telah dikirim ke WhatsApp Anda!');
+            return redirect()->to(base_url());
+        }
+    }
+
+    private function sendWhatsAppNotification($orderData, $transactionId)
+    {
+        // Format message
+        $message = "*===== DETAIL PEMBELIAN =====*\n";
+        $message .= "============================\n";
+        $message .= "📦 *ID Pesanan:* #{$transactionId}\n";
+        $message .= "👤 *Nama:* {$orderData['username']}\n";
+        $message .= "📍 *Alamat:* {$orderData['alamat']}\n";
+        $message .= "📅 *Tanggal:* " . date('d/m/Y H:i:s') . "\n\n";
+
+        $message .= "*====== DETAIL PRODUK ======*\n";
+        $message .= "============================\n";
+
+        $subtotalHarga = 0;
+        foreach ($this->cart->contents() as $item) {
+            $subtotal = $item['qty'] * $item['price'];
+            $subtotalHarga += $subtotal;
+            $message .= "• {$item['name']}\n";
+            $message .= "  Qty: {$item['qty']} x " . number_to_currency($item['price'], 'IDR') . "\n";
+            $message .= "  Subtotal: " . number_to_currency($subtotal, 'IDR') . "\n\n";
         }
 
-        $this->cart->destroy();
- 
-        return redirect()->to(base_url());
+        $message .= "*===== RINGKASAN BIAYA =====*\n";
+        $message .= "============================\n";
+        $message .= "Subtotal Produk: " . number_to_currency($subtotalHarga, 'IDR') . "\n";
+        $message .= "Ongkir: " . number_to_currency($orderData['ongkir'], 'IDR') . "\n";
+        $message .= "============================\n";
+        $message .= "💰 *TOTAL: " . number_to_currency($orderData['total_harga'], 'IDR') . "*\n\n";
+
+        $message .= "✅ *Status:* Menunggu Konfirmasi\n";
+        $message .= "📞 *Info:* Kami akan segera menghubungi Anda untuk konfirmasi pesanan.\n\n";
+        $message .= "Terima kasih telah berbelanja! 🙏";
+
+        // Send to Fonnte API
+        $this->sendToFonnte($orderData['no_whatsapp'], $message);
     }
-}
 
-public function getCost()
-{ 
-		//ID lokasi yang dikirimkan dari halaman checkout
-    $destination = $this->request->getGet('destination');
+    private function sendToFonnte($target, $message)
+    {
+        $fonteToken = env('FONTE_TOKEN'); // Add this to your .env file
 
-		//parameter daerah asal pengiriman, berat produk, dan kurir dibuat statis
-    //valuenya => 64999 : PEDURUNGAN TENGAH , 1000 gram, dan JNE
-    $response = $this->client->request(
-        'POST', 
-        'https://rajaongkir.komerce.id/api/v1/calculate/domestic-cost', [
-            'multipart' => [
-                [
-                    'name' => 'origin',
-                    'contents' => '64999'
+        if (empty($fonteToken)) {
+            log_message('error', 'Fonnte token not configured');
+            return false;
+        }
+
+        try {
+            $response = $this->client->request('POST', 'https://api.fonnte.com/send', [
+                'form_params' => [
+                    'target' => $target,
+                    'message' => $message,
+                    'countryCode' => '62', // Indonesia country code
                 ],
-                [
-                    'name' => 'destination',
-                    'contents' => $destination
+                'headers' => [
+                    'Authorization' => $fonteToken
                 ],
-                [
-                    'name' => 'weight',
-                    'contents' => '1000'
-                ],
-                [
-                    'name' => 'courier',
-                    'contents' => 'jne'
-                ]
-            ],
-            'headers' => [
-                'accept' => 'application/json',
-                'key' => $this->apiKey,
-            ],
-        ]
-    );
+                'timeout' => 30
+            ]);
 
-    $body = json_decode($response->getBody(), true); 
-    return $this->response->setJSON($body['data']);
-}
+            $body = json_decode($response->getBody(), true);
 
+            if (isset($body['status']) && $body['status'] === true) {
+                log_message('info', 'WhatsApp message sent successfully to: ' . $target);
+                return true;
+            } else {
+                log_message('error', 'Failed to send WhatsApp message: ' . json_encode($body));
+                return false;
+            }
+        } catch (\Exception $e) {
+            log_message('error', 'Error sending WhatsApp message: ' . $e->getMessage());
+            return false;
+        }
+    }
 }
