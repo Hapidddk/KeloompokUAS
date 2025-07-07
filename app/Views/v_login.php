@@ -20,8 +20,8 @@ $password = [
 
                 <div class="d-flex justify-content-center py-4">
                     <a href="index.html" class="logo d-flex align-items-center w-auto">
-                        <img src="<?php echo base_url() ?>NiceAdmin/assets/img/logo.png" alt="">
-                        <span class="d-none d-lg-block">Toko</span>
+                        <!-- <img src="<?php echo base_url() ?>NiceAdmin/assets/img/logo.png" alt=""> -->
+                        <span class="d-none d-lg-block">Bengkel Maju Mundur</span>
                     </a>
                 </div><!-- End Logo -->
 
@@ -31,7 +31,7 @@ $password = [
 
                         <div class="pt-4 pb-2">
                             <h5 class="card-title text-center pb-0 fs-4">Login to Your Account</h5>
-                            <p class="text-center small">Enter your username & password to login</p>
+                            <p class="text-center small">Username iharyanto, pw 1234567</p>
                         </div>
 
                         <?php
@@ -52,7 +52,7 @@ $password = [
                         <div class="col-12">
                             <label for="yourUsername" class="form-label">Username</label>
                             <div class="input-group has-validation">
-                                <span class="input-group-text" id="inputGroupPrepend">@</span>
+                                <span class="input-group-text" id="inputGroupPrepend">Usename</span>
                                 <?= form_input($username) ?>
                                 <div class="invalid-feedback">Please enter your username.</div>
                             </div>
@@ -77,7 +77,7 @@ $password = [
                     <!-- You can delete the links only if you purchased the pro version. -->
                     <!-- Licensing information: https://bootstrapmade.com/license/ -->
                     <!-- Purchase the pro version with working PHP/AJAX contact form: https://bootstrapmade.com/nice-admin-bootstrap-admin-html-template/ -->
-                    Designed by <a href="https://bootstrapmade.com/">BootstrapMade</a>
+                    Designed by <a href="https://bootstrapmade.com/">Kami</a>
                 </div>
 
             </div>
